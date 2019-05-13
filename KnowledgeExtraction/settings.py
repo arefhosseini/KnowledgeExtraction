@@ -37,7 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'KnowledgeExtraction',
+    'KnowledgeExtractionApp',
 ]
 
 MIDDLEWARE = [
@@ -120,3 +120,12 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/2.2/howto/static-files/
 
 STATIC_URL = '/static/'
+
+CONSTANTS = {
+    'SPARQL_URL': 'http://farsbase.net:8890/sparql',
+    'fkgr': 'http://fkg.iust.ac.ir/resource/',
+    'fkgp': 'http://fkg.iust.ac.ir/property/',
+    'fkgc': 'http://fkg.iust.ac.ir/category/',
+    'fkgd': 'http://fkg.iust.ac.ir/datatype/',
+    'fkgo': 'http://fkg.iust.ac.ir/ontology/',
+}
