@@ -1,3 +1,5 @@
 from django.contrib import admin
 
-# Register your models here.
+from KnowledgeExtractionApp.models import Relation
+
+admin.site.register(Relation)

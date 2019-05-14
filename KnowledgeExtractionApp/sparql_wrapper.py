@@ -1,8 +1,9 @@
 from SPARQLWrapper import SPARQLWrapper, JSON
 from django.conf import settings
+from django.forms import model_to_dict
+from django.http import JsonResponse
 import re
 
-from KnowledgeExtractionApp.serializers import RelationSerializer
 from KnowledgeExtractionApp.models import Relation
 
 SEPARATOR = [".", "!", "?", ":", "،", "؟"]
@@ -109,6 +110,8 @@ class Sentence:
             self.__phrases.append(Phrase(words))
             next_word = word.get_next_word()
             while next_word is not None:
+                if len(words) == 4:
+                    break
                 words.append(next_word)
                 self.__phrases.append(Phrase(words))
                 next_word = next_word.get_next_word()
@@ -117,13 +120,18 @@ class Sentence:
 class Sparql:
     def __init__(self, string):
         self.__string = string
-        self.__query_subject_object = ""
-        self.__query_subject_subject = ""
+        self.__sparql_wrapper = SPARQLWrapper(settings.CONSTANTS["SPARQL_URL"])
+        self.__sparql_wrapper.setReturnFormat(JSON)
+        self.__query_existing_resources_list = []
+        self.__query_subject_object_list = []
+        self.__query_subject_subject_list = []
+        self.__result_query = None
         self.__sentences = []
         self.__phrases = []
         self.__relations = []
         self.__subject_object_list = []
         self.split_text()
+        self.check_resources()
         self.create_relations()
         self.create_query_subject_object()
 
@@ -149,6 +157,35 @@ class Sparql:
                     self.__phrases.append(phrase)
             self.__sentences.append(sentence)
 
+    def check_resources(self):
+        phrases = list(self.__phrases) 
+        while True:
+            counter = len(phrases)
+            if counter > 500:
+                counter = 500
+            elif counter == 0:
+                break
+            phrases_mini_list = phrases[:counter]
+            del phrases[:counter]
+            query_existing_resources = "prefix fkgr: <%s> SELECT ?resource ?existing{values ?resource {"\
+                                       % settings.CONSTANTS["fkgr"]
+            for phrase in phrases_mini_list:
+                query_existing_resources += "fkgr:%s " % phrase.get_string()
+            query_existing_resources += "} bind (exists {?resource ?p ?o} AS ?existing)}"
+            self.__query_existing_resources_list.append(query_existing_resources)
+        for query_existing_resources in self.__query_existing_resources_list:
+            self.run_query(query_existing_resources)
+            removing_phrases = []
+            if self.__result_query:
+                if "results" in self.__result_query:
+                    if "bindings" in self.__result_query["results"]:
+                        bindings = self.__result_query["results"]["bindings"]
+                        for index in range(len(bindings)):
+                            if bindings[index]['existing']['value'] == "0":
+                                removing_phrases.append(self.__phrases[index])
+            for phrase in removing_phrases:
+                self.__phrases.remove(phrase)
+
     def create_relations(self):
         delete_phrases = []
         for index in range(len(self.__phrases) - 1):
@@ -156,7 +193,8 @@ class Sparql:
                 first_phrase = self.__phrases[index]
                 second_phrase = self.__phrases[sub_index]
                 if self.check_phrases(first_phrase, second_phrase):
-                    relations = Relation.objects.filter(subject=first_phrase, object=second_phrase)
+                    relations = Relation.objects.filter(subject=first_phrase.get_string(),
+                                                        object=second_phrase.get_string())
                     if len(relations) > 0:
                         for relation in relations:
                             if self.check_relation(relation):
@@ -169,7 +207,8 @@ class Sparql:
                         subject_object = SubjectObject(first_phrase, second_phrase)
                         self.__subject_object_list.append(subject_object)
 
-                    relations = Relation.objects.filter(subject=second_phrase, object=first_phrase)
+                    relations = Relation.objects.filter(subject=second_phrase.get_string(),
+                                                        object=first_phrase.get_string())
                     if len(relations) > 0:
                         for relation in relations:
                             if self.check_relation(relation):
@@ -185,24 +224,55 @@ class Sparql:
             self.__phrases.remove(phrase)
 
     def create_query_subject_object(self):
-        counter = 0
-        self.__query_subject_object = "SELECT DISTINCT * WHERE{"
-        for subject_object in self.__subject_object_list:
-            print(subject_object.get_subject().get_string(), subject_object.get_object().get_string())
-            subject_value = "{<" + settings.CONSTANTS["fkgr"] + subject_object.get_subject().get_string() + ">} "
-            object_value = "{<" + settings.CONSTANTS["fkgr"] + subject_object.get_object().get_string() + ">} "
-            mini_query = " {SELECT ?s, ?p, ?o WHERE{values ?s" + subject_value + "values ?o" + object_value + \
-                         "?s ?p ?o FILTER(isIRI(?o))}} "
-            # if self.__subject_object_list[-1] != subject_object:
-            if counter != 20:
-                mini_query += "UNION"
-                self.__query_subject_object += mini_query
-            else:
-                self.__query_subject_object += mini_query
+        subject_object_list = list(self.__subject_object_list)
+        while True:
+            counter = len(subject_object_list)
+            if counter > 10:
+                counter = 10
+            elif counter == 0:
                 break
-            counter += 1
-        self.__query_subject_object += "}"
-        print(self.__query_subject_object)
+            subject_object_mini_list = subject_object_list[:counter]
+            del subject_object_list[:counter]
+            query_subject_object = "prefix fkgr: <%s> SELECT DISTINCT * WHERE{" % settings.CONSTANTS["fkgr"]
+            for subject_object in subject_object_mini_list:
+                subject_value = "{fkgr:%s}" % subject_object.get_subject().get_string()
+                object_value = "{fkgr:%s}" % subject_object.get_object().get_string()
+                mini_query = " {SELECT ?s, ?p, ?o WHERE{values ?s %s values ?o %s ?s ?p ?o FILTER(isIRI(?o))}} " %\
+                             (subject_value, object_value)
+                if subject_object_mini_list[-1] != subject_object:
+                    mini_query += "UNION"
+                    query_subject_object += mini_query
+                else:
+                    query_subject_object += mini_query
+
+            query_subject_object += "}"
+            self.__query_subject_object_list.append(query_subject_object)
+        for query_subject_object_list in self.__query_subject_object_list:
+            self.run_query(query_subject_object_list)
+            if self.__result_query:
+                if "results" in self.__result_query:
+                    if "bindings" in self.__result_query["results"]:
+                        fkgr_length = len(settings.CONSTANTS["fkgr"])
+                        for item in self.__result_query["results"]["bindings"]:
+                            relation = Relation.objects.create(
+                                subject=item["s"]["value"][fkgr_length:],
+                                object=item["o"]["value"][len(settings.CONSTANTS["fkgr"]):],
+                                predicate=item["p"]["value"])
+                            self.__relations.append(relation)
+                            relation.save()
+
+    def get_json_relations(self):
+        json_relation_list = []
+        for relation in self.__relations:
+            json_relation = {"subject": relation.subject, "predicate": relation.predicate, "object": relation.object}
+            json_relation_list.append(json_relation)
+
+        return JsonResponse({"relations": json_relation_list})
+
+    def run_query(self, query):
+        self.__result_query = None
+        self.__sparql_wrapper.setQuery(query)
+        self.__result_query = self.__sparql_wrapper.query().convert()
 
     def check_phrases(self, phrase1, phrase2):
         for word1 in phrase1.get_words():
@@ -214,18 +284,27 @@ class Sparql:
     def check_relation(self, relation):
         for rel in self.__relations:
             if rel.subject == relation.subject and rel.predicate == relation.predicate and \
-                    rel.object == relation.objects:
+                    rel.object == relation.object:
                 return False
         return True
 
     def get_string(self):
         return self.__string
 
+    def get_sparql_wrapper(self):
+        return self.__sparql_wrapper
+
+    def get_query_existing_resources_list(self):
+        return self.__query_existing_resources_list
+
     def get_query_subject_object(self):
-        return self.__query_subject_object
+        return self.__query_subject_object_list
 
     def get_query_subject_subject(self):
-        return self.__query_subject_subject
+        return self.__query_subject_subject_list
+
+    def get_result_query(self):
+        return self.__result_query
 
     def get_sentences(self):
         return self.__sentences
@@ -242,11 +321,20 @@ class Sparql:
     def set_string(self, string):
         self.__string = string
 
-    def set_query_subject_object(self, query_subject_object):
-        self.__query_subject_object = query_subject_object
+    def set_sparql_wrapper(self, sparql_wrapper):
+        self.__sparql_wrapper = sparql_wrapper
 
-    def set_query_subject_subject(self, query_subject_subject):
-        self.__query_subject_subject = query_subject_subject
+    def set_query_existing_resources_list(self, query_existing_resources_list):
+        self.__query_existing_resources_list = query_existing_resources_list
+
+    def set_query_subject_object_list(self, query_subject_object_list):
+        self.__query_subject_object_list = query_subject_object_list
+
+    def set_query_subject_subject(self, query_subject_subject_list):
+        self.__query_subject_subject_list = query_subject_subject_list
+
+    def set_result_query(self, result_query):
+        self.__result_query = result_query
 
     def set_sentences(self, sentences):
         self.__sentences = sentences
@@ -267,17 +355,3 @@ def find_nth(haystack, needle, n):
         start = haystack.find(needle, start + len(needle))
         n -= 1
     return start
-
-
-'''sparql = SPARQLWrapper(settings.CONSTANTS["SPARQL_URL"])
-sparql.setQuery("""
-    prefix fkgr: <http://fkg.iust.ac.ir/resource/>
-    SELECT ?person
-    WHERE {
-        ?person fkgr:name "سلام"@fa .
-    }
-
-""")
-sparql.setReturnFormat(JSON)
-results = sparql.query().convert()
-print(results)'''
