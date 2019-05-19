@@ -4,6 +4,7 @@ from urllib.error import URLError
 from SPARQLWrapper import SPARQLWrapper, JSON
 from django.conf import settings
 from django.http import JsonResponse
+from .graph import Node, Edge, Graph
 
 from KnowledgeExtractionApp.models import Relation
 
@@ -155,11 +156,13 @@ class Sparql:
         self.__relations = []
         self.__subject_object_list = []
         self.__subject_subject_list = []
+        self.__graph = Graph()
         self.split_text()
         self.check_resources()
         self.create_relations()
         self.create_query_subject_object()
         # self.create_query_subject_subject()
+        self.create_graph()
 
     def split_text(self):
         split_string = [self.__string]
@@ -348,13 +351,22 @@ class Sparql:
                                 self.__relations.append(second_relation)
                                 second_relation.save()
 
-    def get_json_relations(self):
-        json_relation_list = []
+    def create_graph(self):
         for relation in self.__relations:
-            json_relation = {"subject": relation.subject, "predicate": relation.predicate, "object": relation.object}
-            json_relation_list.append(json_relation)
+            node_from = Node(self.__graph.nominate_node_id(), relation.subject)
+            node_to = Node(self.__graph.nominate_node_id(), relation.object)
+            predicate = relation.predicate
+            for cons in settings.CONSTANTS:
+                if settings.CONSTANTS[cons] in relation.predicate:
+                    predicate = cons + ":" + relation.predicate[len(settings.CONSTANTS[cons]):]
+            edge = Edge(self.__graph.nominate_edge_id(), predicate, node_from, node_to)
 
-        return JsonResponse({"relations": json_relation_list})
+            self.__graph.add_node(node_from)
+            self.__graph.add_node(node_to)
+            self.__graph.add_edge(edge)
+
+    def get_json(self):
+        return JsonResponse({"relations": self.__graph.graph_to_dict()})
 
     def run_query(self, query):
         self.__result_query = None
@@ -408,6 +420,9 @@ class Sparql:
     def get_subject_subject_list(self):
         return self.__subject_subject_list
 
+    def get_graph(self):
+        return self.__graph
+
     def set_string(self, string):
         self.__string = string
 
@@ -440,6 +455,9 @@ class Sparql:
 
     def set_subject_subject_list(self, subject_subject_list):
         self.__subject_subject_list = subject_subject_list
+
+    def set_graph(self, graph):
+        self.__graph = graph
 
 
 def find_nth(haystack, needle, n):

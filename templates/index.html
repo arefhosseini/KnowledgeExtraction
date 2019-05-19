@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>گراف دانش</title>
+
+    {% load static %}
+    <script type="text/javascript" src="{% static 'js/vis-network.min.js' %}"></script>
+    <link rel="stylesheet" href="{% static 'css/vis-network.min.css' %}" type="text/css">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}" type="text/css">
+</head>
+<body>
+
+    <div id="div_search">
+        <input type="text" id="search" autocomplete="false" spellcheck="false" readonly onfocus="this.removeAttribute('readonly');">
+        <label for="search"></label>
+    </div>
+
+    <div id="my_network"></div>
+
+    <script type="text/javascript">
+
+        document.getElementById("search")
+            .addEventListener("keyup", function(event) {
+            event.preventDefault();
+            if (event.key === "Enter") {
+                event.preventDefault();
+                search();
+            }
+        });
+
+        function search() {
+            let text = document.getElementById("search").value;
+
+            let csrfToken = '{{ csrf_token }}';
+            let xhr = new XMLHttpRequest();
+            xhr.open("POST", "/text/", true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('X-CSRFToken', csrfToken);
+            xhr.onreadystatechange = function() {
+                if (this.readyState === 4 && this.status === 200) {
+                    let data = JSON.parse(this.responseText);
+                    createGraph(data)
+                }
+            };
+            xhr.send(JSON.stringify({
+                text: text
+            }));
+        }
+
+        function createGraph(data) {
+            let nodes = [];
+            let edges = [];
+
+            // create an array with nodes
+            for (let node in data.relations.nodes) {
+                nodes.push({id: data.relations.nodes[node].id,
+                    label: data.relations.nodes[node].label,
+                    shape: 'box'});
+            }
+
+            // create an array with edges
+            for (let edge in data.relations.edges) {
+                console.log(data.relations.edges[edge].label);
+                edges.push({id: data.relations.edges[edge].id,
+                    to: data.relations.edges[edge].to,
+                    from: data.relations.edges[edge].from,
+                    label: data.relations.edges[edge].label,
+                    arrows: 'to'});
+            }
+
+            // create a network
+            let container = document.getElementById('my_network');
+            let graphData = {
+                nodes: nodes,
+                edges: edges
+            };
+            let options = {
+                physics: {
+                    enabled: true,
+                    barnesHut: {
+                        gravitationalConstant: -2000,
+                        centralGravity: 0.3,
+                        springLength: 300,
+                        springConstant: 0.04,
+                        damping: 0.09,
+                        avoidOverlap: 0
+                    },
+                },
+                interaction: {
+                    dragNodes: false,
+                    dragView: false
+                }
+            };
+            let network = new vis.Network(container, graphData, options);
+    
+            network.on("click", function (params) {
+                params.event = "[original event]";
+            });
+        }
+    </script>
+</body>
+</html>

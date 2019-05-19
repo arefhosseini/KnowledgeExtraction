@@ -25,8 +25,7 @@ SECRET_KEY = '59q1k-5z(l64-lou@cd5ib826c^6d&7hkvrhnj)^hi+z05r%s5'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
-
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2']
 
 # Application definition
 
@@ -120,6 +119,10 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/2.2/howto/static-files/
 
 STATIC_URL = '/static/'
+
+STATICFILES_DIRS = (
+  os.path.join(BASE_DIR, 'static/'),
+)
 
 CONSTANTS = {
     'SPARQL_URL': 'http://farsbase.net:8890/sparql',
