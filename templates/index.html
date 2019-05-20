@@ -7,19 +7,36 @@
     {% load static %}
     <script type="text/javascript" src="{% static 'js/vis-network.min.js' %}"></script>
     <link rel="stylesheet" href="{% static 'css/vis-network.min.css' %}" type="text/css">
+    <link rel="stylesheet" href="{% static 'css/ball-spin.css' %}" type="text/css">
     <link rel="stylesheet" href="{% static 'css/style.css' %}" type="text/css">
 </head>
 <body>
 
+    <div id="space"></div>
     <div id="div_search">
-        <input type="text" id="search" autocomplete="false" spellcheck="false" readonly onfocus="this.removeAttribute('readonly');">
+        <input type="text" id="search" autocomplete="false" placeholder="جمله خود را وارد نمایید" spellcheck="false" readonly onfocus="this.removeAttribute('readonly');">
         <label for="search"></label>
     </div>
-
     <div id="my_network"></div>
+    <div id="space"></div>
+
+    <div id="spinner" class="la-ball-spin la-2x">
+        <div></div>
+        <div></div>
+        <div></div>
+        <div></div>
+        <div></div>
+        <div></div>
+        <div></div>
+        <div></div>
+    </div>
 
     <script type="text/javascript">
+        let spinner = document.getElementById("spinner");
+        let container = document.getElementById('my_network');
+        spinner.style.display = "none";
 
+        let isSearch = false;
         document.getElementById("search")
             .addEventListener("keyup", function(event) {
             event.preventDefault();
@@ -30,22 +47,28 @@
         });
 
         function search() {
-            let text = document.getElementById("search").value;
-
-            let csrfToken = '{{ csrf_token }}';
-            let xhr = new XMLHttpRequest();
-            xhr.open("POST", "/text/", true);
-            xhr.setRequestHeader('Content-Type', 'application/json');
-            xhr.setRequestHeader('X-CSRFToken', csrfToken);
-            xhr.onreadystatechange = function() {
-                if (this.readyState === 4 && this.status === 200) {
-                    let data = JSON.parse(this.responseText);
-                    createGraph(data)
-                }
-            };
-            xhr.send(JSON.stringify({
-                text: text
-            }));
+            if (!isSearch) {
+                let text = document.getElementById("search").value;
+                let csrfToken = '{{ csrf_token }}';
+                let xhr = new XMLHttpRequest();
+                xhr.open("POST", "/text/", true);
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.setRequestHeader('X-CSRFToken', csrfToken);
+                xhr.onreadystatechange = function() {
+                    if (this.readyState === 4 && this.status === 200) {
+                        spinner.style.display = "none";
+                        isSearch = false;
+                        let data = JSON.parse(this.responseText);
+                        createGraph(data)
+                    }
+                };
+                xhr.send(JSON.stringify({
+                    text: text
+                }));
+                isSearch = true;
+                spinner.style.display = "block";
+                container.innerHTML = "";
+            }
         }
 
         function createGraph(data) {
@@ -70,12 +93,14 @@
             }
 
             // create a network
-            let container = document.getElementById('my_network');
             let graphData = {
                 nodes: nodes,
                 edges: edges
             };
             let options = {
+                layout: {
+                    randomSeed: 1
+                },
                 physics: {
                     enabled: true,
                     barnesHut: {
@@ -90,8 +115,41 @@
                 interaction: {
                     dragNodes: false,
                     dragView: false
+                },
+                nodes: {
+                    borderWidth:1,
+                    size:80,
+                    color: {
+                        border: '#ffffff',
+                        background: '#ba7a7a',
+                        highlight: {
+                            border: '#ffffff',
+                            background: '#ba4444'
+,                        }
+                    },
+                        font: {
+                        face: "BKoodakBold",
+                        size: 16,
+                        color:'#ffffff'
+                    }
+                },
+                edges: {
+                    scaling: {
+                        customScalingFunction: function (min,max,total,value) {
+                            return value/total;
+                        },
+                        min:1,
+                        max:200
+                    },
+                    font: {
+                        color: '#ffffff',
+                        size: 16,
+                        face: 'BKoodakBold',
+                        strokeWidth: 0,
+                    },
                 }
             };
+
             let network = new vis.Network(container, graphData, options);
     
             network.on("click", function (params) {

@@ -353,16 +353,27 @@ class Sparql:
 
     def create_graph(self):
         for relation in self.__relations:
-            node_from = Node(self.__graph.nominate_node_id(), relation.subject)
-            node_to = Node(self.__graph.nominate_node_id(), relation.object)
+            node_from = None
+            node_to = None
+            for node in self.__graph.get_nodes():
+                if node_from is None and relation.subject == node.get_label():
+                    node_from = node
+                if node_to is None and relation.object == node.get_label():
+                    node_to = node
+                if node_from is not None and node_to is not None:
+                    break
+            if node_from is None:
+                node_from = Node(self.__graph.nominate_node_id(), relation.subject)
+                self.__graph.add_node(node_from)
+            if node_to is None:
+                node_to = Node(self.__graph.nominate_node_id(), relation.object)
+                self.__graph.add_node(node_to)
             predicate = relation.predicate
             for cons in settings.CONSTANTS:
                 if settings.CONSTANTS[cons] in relation.predicate:
                     predicate = cons + ":" + relation.predicate[len(settings.CONSTANTS[cons]):]
             edge = Edge(self.__graph.nominate_edge_id(), predicate, node_from, node_to)
 
-            self.__graph.add_node(node_from)
-            self.__graph.add_node(node_to)
             self.__graph.add_edge(edge)
 
     def get_json(self):
