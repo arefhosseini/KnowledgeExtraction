@@ -52,8 +52,8 @@ class Graph:
     def __init__(self):
         self.__nodes = []
         self.__edges = []
-        self.__node_id_counter = 0
-        self.__edge_id_counter = 0
+        self.__node_id_counter = -1
+        self.__edge_id_counter = -1
 
     def get_nodes(self):
         return self.__nodes
