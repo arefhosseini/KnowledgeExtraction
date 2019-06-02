@@ -131,4 +131,11 @@ CONSTANTS = {
     'fkgc': 'http://fkg.iust.ac.ir/category/',
     'fkgd': 'http://fkg.iust.ac.ir/datatype/',
     'fkgo': 'http://fkg.iust.ac.ir/ontology/',
+    'rdfs': 'http://www.w3.org/2000/01/rdf-schema#',
+    'skos': 'http://www.w3.org/2004/02/skos/core#',
+    'foaf': 'http://xmlns.com/foaf/0.1/',
+    'owl':  'http://www.w3.org/2002/07/owl#',
+    'rdf':  'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+    'dct':  'http://dublincore.org/2012/06/14/dcterms#',
+    'dbpm': 'http://mappings.dbpedia.org/index.php/'
 }

@@ -17,17 +17,25 @@ class Node:
 
 
 class Edge:
-    def __init__(self, edge_id, label, node_from, node_to):
+    def __init__(self, edge_id, node_from, node_to):
         self.__edge_id = edge_id
-        self.__label = label
+        self.__labels = []
         self.__node_from = node_from
         self.__node_to = node_to
+
+    def add_label(self, label):
+        if label not in self.__labels:
+            self.__labels.append(label)
+
+    def remove_label(self, label):
+        if label in self.__labels:
+            self.__labels.remove(label)
 
     def get_edge_id(self):
         return self.__edge_id
 
-    def get_label(self):
-        return self.__label
+    def get_labels(self):
+        return self.__labels
 
     def get_node_from(self):
         return self.__node_from
@@ -37,9 +45,6 @@ class Edge:
 
     def set_edge_id(self, edge_id):
         self.__edge_id = edge_id
-
-    def set_label(self, label):
-        self.__label = label
 
     def set_node_from(self, node_from):
         self.__node_from = node_from
@@ -61,11 +66,29 @@ class Graph:
     def get_edges(self):
         return self.__edges
 
-    def add_node(self, node):
-        self.__nodes.append(node)
+    def add_node(self, label):
+        node = None
+        for n in self.__nodes:
+            if n.get_label() == label:
+                node = n
+                break
+        if node is None:
+            node = Node(self.nominate_node_id(), label)
+            self.__nodes.append(node)
+        return node
 
-    def add_edge(self, edge):
-        self.__edges.append(edge)
+    def add_edge(self, label, node_from, node_to):
+        edge = None
+        for e in self.__edges:
+            if e.get_node_from() == node_from and e.get_node_to() == node_to:
+                e.add_label(label)
+                edge = e
+                break
+        if edge is None:
+            edge = Edge(self.nominate_edge_id(), node_from, node_to)
+            edge.add_label(label)
+            self.__edges.append(edge)
+        return edge
 
     def remove_node(self, node):
         if node in self.__nodes:
@@ -94,7 +117,7 @@ class Graph:
         for edge in self.__edges:
             edges_dict_list.append(
                 {"id": edge.get_edge_id(),
-                 "label": edge.get_label(),
+                 "labels": edge.get_labels(),
                  "from": edge.get_node_from().get_node_id(),
                  "to": edge.get_node_to().get_node_id()})
 

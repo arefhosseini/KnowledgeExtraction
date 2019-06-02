@@ -4,15 +4,21 @@ from urllib.error import URLError
 from SPARQLWrapper import SPARQLWrapper, JSON
 from django.conf import settings
 from django.http import JsonResponse
-from .graph import Node, Edge, Graph
 
 from KnowledgeExtractionApp.models import Relation
+from .graph import Graph
 
 SEPARATOR = [".", "!", "?", ":", "،", "؟"]
+IGNORE_OBJECTS = [
+    "http://fkg.iust.ac.ir/ontology/Thing",
+    "http://www.w3.org/2002/07/owl#NamedIndividual",
+    "http://fkg.iust.ac.ir/category/"
+]
+
 IGNORE_PREDICATES = [
-    "http://dublincore.org/2012/06/14/dcterms#subject",
-    "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-    "http://www.w3.org/1999/02/22-rdf-syntax-ns#instanceOf"
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#instanceOf",
+    "http://www.w3.org/2002/07/owl#sameAs",
+    "http://fkg.iust.ac.ir/ontology/wikiPageRedirects"
 ]
 
 
@@ -161,7 +167,7 @@ class Sparql:
         self.check_resources()
         self.create_relations()
         self.create_query_subject_object()
-        # self.create_query_subject_subject()
+        self.create_query_subject_subject()
         self.create_graph()
 
     def split_text(self):
@@ -292,14 +298,14 @@ class Sparql:
             if self.__result_query:
                 if "results" in self.__result_query:
                     if "bindings" in self.__result_query["results"]:
-                        fkgr_length = len(settings.CONSTANTS["fkgr"])
                         for item in self.__result_query["results"]["bindings"]:
                             relation = Relation.objects.create(
-                                subject=item["s"]["value"][fkgr_length:],
-                                object=item["o"]["value"][fkgr_length:],
-                                predicate=item["p"]["value"])
-                            self.__relations.append(relation)
-                            relation.save()
+                                subject=self.shorten_url(item["s"]["value"]),
+                                object=self.shorten_url(item["o"]["value"]),
+                                predicate=self.shorten_url(item["p"]["value"]))
+                            if self.check_relation(relation):
+                                self.__relations.append(relation)
+                                relation.save()
 
     def create_query_subject_subject(self):
         subject_subject_list = list(self.__subject_subject_list)
@@ -315,7 +321,7 @@ class Sparql:
             for subject_subject in subject_subject_mini_list:
                 first_subject_value = "{fkgr:%s}" % subject_subject.get_first_subject().get_string()
                 second_subject_value = "{fkgr:%s}" % subject_subject.get_second_subject().get_string()
-                mini_query = " {SELECT ?s1, ?s2, ?p, ?o WHERE{values ?s1 %s values ?s2 %s " \
+                mini_query = " {SELECT DISTINCT ?s1, ?s2, ?p, ?o WHERE{values ?s1 %s values ?s2 %s " \
                              "?s1 ?p ?o. ?s2 ?p ?o FILTER(isIRI(?o))}} " %\
                              (first_subject_value, second_subject_value)
                 if subject_subject_mini_list[-1] != subject_subject:
@@ -334,47 +340,29 @@ class Sparql:
             if self.__result_query:
                 if "results" in self.__result_query:
                     if "bindings" in self.__result_query["results"]:
-                        fkgr_length = len(settings.CONSTANTS["fkgr"])
                         for item in self.__result_query["results"]["bindings"]:
-                            if item["p"]["value"] not in IGNORE_PREDICATES:
+                            if self.check_object(item["o"]["value"]) and self.check_predicate(item["p"]["value"]):
                                 first_relation = Relation.objects.create(
-                                    subject=item["s1"]["value"][fkgr_length:],
-                                    object=item["o"]["value"][fkgr_length:],
-                                    predicate=item["p"]["value"])
-                                self.__relations.append(first_relation)
-                                first_relation.save()
+                                    subject=self.shorten_url(item["s1"]["value"]),
+                                    object=self.shorten_url(item["o"]["value"]),
+                                    predicate=self.shorten_url(item["p"]["value"]))
+                                if self.check_relation(first_relation):
+                                    self.__relations.append(first_relation)
+                                    first_relation.save()
 
                                 second_relation = Relation.objects.create(
-                                    subject=item["s2"]["value"][fkgr_length:],
-                                    object=item["o"]["value"][fkgr_length:],
-                                    predicate=item["p"]["value"])
-                                self.__relations.append(second_relation)
-                                second_relation.save()
+                                    subject=self.shorten_url(item["s2"]["value"]),
+                                    object=self.shorten_url(item["o"]["value"]),
+                                    predicate=self.shorten_url(item["p"]["value"]))
+                                if self.check_relation(second_relation):
+                                    self.__relations.append(second_relation)
+                                    second_relation.save()
 
     def create_graph(self):
         for relation in self.__relations:
-            node_from = None
-            node_to = None
-            for node in self.__graph.get_nodes():
-                if node_from is None and relation.subject == node.get_label():
-                    node_from = node
-                if node_to is None and relation.object == node.get_label():
-                    node_to = node
-                if node_from is not None and node_to is not None:
-                    break
-            if node_from is None:
-                node_from = Node(self.__graph.nominate_node_id(), relation.subject)
-                self.__graph.add_node(node_from)
-            if node_to is None:
-                node_to = Node(self.__graph.nominate_node_id(), relation.object)
-                self.__graph.add_node(node_to)
-            predicate = relation.predicate
-            for cons in settings.CONSTANTS:
-                if settings.CONSTANTS[cons] in relation.predicate:
-                    predicate = cons + ":" + relation.predicate[len(settings.CONSTANTS[cons]):]
-            edge = Edge(self.__graph.nominate_edge_id(), predicate, node_from, node_to)
-
-            self.__graph.add_edge(edge)
+            node_from = self.__graph.add_node(relation.subject)
+            node_to = self.__graph.add_node(relation.object)
+            self.__graph.add_edge(relation.predicate, node_from, node_to)
 
     def get_json(self):
         return JsonResponse({"relations": self.__graph.graph_to_dict()})
@@ -397,6 +385,24 @@ class Sparql:
                     rel.object == relation.object:
                 return False
         return True
+
+    def check_predicate(self, predicate):
+        for ignore_predicate in IGNORE_PREDICATES:
+            if ignore_predicate in predicate:
+                return False
+        return True
+
+    def check_object(self, obj):
+        for ignore_object in IGNORE_OBJECTS:
+            if ignore_object in obj:
+                return False
+        return True
+
+    def shorten_url(self, url):
+        for constant in settings.CONSTANTS:
+            if settings.CONSTANTS[constant] in url:
+                return constant + ":" + url[len(settings.CONSTANTS[constant]):]
+        return url
 
     def get_string(self):
         return self.__string

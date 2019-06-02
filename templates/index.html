@@ -71,24 +71,34 @@
             }
         }
 
+        function convertLabels(labels) {
+            if (labels.length === 1)
+                return labels[0];
+            let retString = "{";
+            for (let index in labels) {
+                retString += labels[index] + ", ";
+            }
+            retString = retString.slice(0, retString.length - 2);
+            return retString + "}";
+        }
+
         function createGraph(data) {
             let nodes = [];
             let edges = [];
 
             // create an array with nodes
-            for (let node in data.relations.nodes) {
-                nodes.push({id: data.relations.nodes[node].id,
-                    label: data.relations.nodes[node].label,
+            for (let index in data.relations.nodes) {
+                nodes.push({id: data.relations.nodes[index].id,
+                    label: data.relations.nodes[index].label,
                     shape: 'box'});
             }
 
             // create an array with edges
-            for (let edge in data.relations.edges) {
-                console.log(data.relations.edges[edge].label);
-                edges.push({id: data.relations.edges[edge].id,
-                    to: data.relations.edges[edge].to,
-                    from: data.relations.edges[edge].from,
-                    label: data.relations.edges[edge].label,
+            for (let index in data.relations.edges) {
+                edges.push({id: data.relations.edges[index].id,
+                    to: data.relations.edges[index].to,
+                    from: data.relations.edges[index].from,
+                    label: convertLabels(data.relations.edges[index].labels),
                     arrows: 'to'});
             }
 
@@ -99,7 +109,7 @@
             };
             let options = {
                 layout: {
-                    randomSeed: 1
+                    randomSeed: 2
                 },
                 physics: {
                     enabled: true,
